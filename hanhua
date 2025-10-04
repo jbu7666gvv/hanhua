@@ -683,6 +683,31 @@ local TRANSLATIONS = {
     [" teleport to camp"] = "传送至营地",
 }
 
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+-- 使用局部变量缓存常用函数
+local IsA = game.IsA
+local typeof = typeof
+local wait = wait
+
+-- 预定义需要处理的UI类型和属性
+local UI_TYPES = {
+    TextLabel = true,
+    TextButton = true, 
+    TextBox = true,
+    ScrollingFrame = true
+}
+
+local TARGET_PROPERTY = "Text"
+
+-- 翻译表（这里只展示部分，完整版用你的原翻译表）
+local TRANSLATIONS = {
+    ["3RD FLOOR"] = "三楼",
+    ["A new patch note (99 NIGHTS IN THE FOREST UPDATE! ) is available! Open the changelog?"] = "有一个新的补丁说明《森林九十九夜》更新！🦌可供查看！是否打开更新日志？",
+    -- ... 你的其他翻译内容保持不变
+}
+
 -- 计算翻译条目数量
 local function getTableSize(t)
     local count = 0
@@ -715,8 +740,10 @@ local function translateGUI(guiObject)
         local translated = translateText(guiObject.Text)
         if translated ~= guiObject.Text then
             guiObject.Text = translated
+            return true
         end
     end
+    return false
 end
 
 -- 主翻译功能
@@ -733,11 +760,15 @@ local function initializeTranslations()
     end
     
     local function translateExistingUI()
+        local translatedCount = 0
         for _, gui in pairs(player.PlayerGui:GetDescendants()) do
             if UI_TYPES[gui.ClassName] then
-                translateGUI(gui)
+                if translateGUI(gui) then
+                    translatedCount = translatedCount + 1
+                end
             end
         end
+        print("Translated " .. translatedCount .. " existing UI elements")
     end
     
     -- 翻译现有UI
@@ -747,7 +778,7 @@ local function initializeTranslations()
     local function onDescendantAdded(descendant)
         if UI_TYPES[descendant.ClassName] then
             -- 延迟执行以确保属性已设置
-            task.delay(0.1, function()
+            delay(0.1, function()
                 translateGUI(descendant)
             end)
             
@@ -790,16 +821,19 @@ local function safeTranslationMethod()
         end
     end
     
-    -- 每0.5秒检查一次新UI元素
-    while true do
+    -- 使用 Heartbeat 而不是 while true 循环
+    local connection
+    connection = RunService.Heartbeat:Connect(function()
         safeTranslate()
-        task.wait(0.5)
-    end
+    end)
+    
+    -- 返回连接以便可以断开
+    return connection
 end
 
 -- 延迟初始化以确保游戏完全加载
-task.spawn(function()
-    RunService.Heartbeat:Wait()
+local function startTranslation()
+    wait(2) -- 等待2秒让游戏加载
     
     -- 尝试标准方法
     local success, err = pcall(initializeTranslations)
@@ -809,7 +843,10 @@ task.spawn(function()
         -- 使用安全方法作为备选
         pcall(safeTranslationMethod)
     end
-end)
+end
+
+-- 启动翻译系统
+startTranslation()
 
 -- 导出翻译函数供其他脚本使用
 return {
