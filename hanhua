@@ -15,6 +15,7 @@ local UI_TYPES = {
 
 local TARGET_PROPERTY = "Text"
 
+-- 翻译表（这里只展示部分，完整版用你的原翻译表）
 local TRANSLATIONS = {
     ["3RD FLOOR"] = "三楼",
     ["A new patch note (99 NIGHTS IN THE FOREST UPDATE! ) is available! Open the changelog?"] = "有一个新的补丁说明《森林九十九夜》更新！🦌可供查看！是否打开更新日志？",
@@ -691,9 +692,31 @@ local function getTableSize(t)
     return count
 end
 
+-- 获取UI类型名称列表
+local function getUItypeNames()
+    local names = {}
+    for name in pairs(UI_TYPES) do
+        table.insert(names, name)
+    end
+    return names
+end
+
 -- 翻译函数
 local function translateText(text)
-    return TRANSLATIONS[text] or text
+    if text and typeof(text) == "string" then
+        return TRANSLATIONS[text] or text
+    end
+    return text
+end
+
+-- 安全的UI翻译函数
+local function translateGUI(guiObject)
+    if guiObject and guiObject:IsA("GuiObject") and guiObject.Text then
+        local translated = translateText(guiObject.Text)
+        if translated ~= guiObject.Text then
+            guiObject.Text = translated
+        end
+    end
 end
 
 -- 主翻译功能
@@ -711,11 +734,8 @@ local function initializeTranslations()
     
     local function translateExistingUI()
         for _, gui in pairs(player.PlayerGui:GetDescendants()) do
-            if UI_TYPES[gui.ClassName] and gui:IsA("GuiObject") and gui.Text then
-                local translated = translateText(gui.Text)
-                if translated ~= gui.Text then
-                    gui.Text = translated
-                end
+            if UI_TYPES[gui.ClassName] then
+                translateGUI(gui)
             end
         end
     end
@@ -724,84 +744,72 @@ local function initializeTranslations()
     translateExistingUI()
     
     -- 监听新添加的UI元素
-    player.PlayerGui.DescendantAdded:Connect(function(descendant)
-        if UI_TYPES[descendant.ClassName] and descendant:IsA("GuiObject") then
-            wait() -- 等待属性设置
-            if descendant.Text then
-                local translated = translateText(descendant.Text)
-                if translated ~= descendant.Text then
-                    descendant.Text = translated
-                end
-            end
+    local function onDescendantAdded(descendant)
+        if UI_TYPES[descendant.ClassName] then
+            -- 延迟执行以确保属性已设置
+            task.delay(0.1, function()
+                translateGUI(descendant)
+            end)
             
             -- 监听文本变化
-            descendant:GetPropertyChangedSignal("Text"):Connect(function()
-                if descendant.Text then
-                    local translated = translateText(descendant.Text)
-                    if translated ~= descendant.Text then
-                        descendant.Text = translated
-                    end
-                end
-            end)
-        end
-    end)
-    
-    -- 同时尝试元表方法（如果环境允许）
-    local success, result = pcall(function()
-        local m = getrawmetatable(game)
-        if m then
-            local o = m.__newindex
-            setreadonly(m, false)
-
-            m.__newindex = function(t, k, v)
-                -- 检查是否为Text属性
-                if k == TARGET_PROPERTY then
-                    -- 检查对象类型
-                    if typeof(t) == "Instance" then
-                        local className = t.ClassName
-                        -- 检查是否为需要翻译的UI类型
-                        if UI_TYPES[className] then
-                            -- 查找翻译
-                            local translated = translateText(v)
-                            if translated ~= v then
-                                v = translated
-                            end
-                        end
-                    end
-                end
-                
-                return o(t, k, v)
+            if descendant:IsA("GuiObject") then
+                descendant:GetPropertyChangedSignal("Text"):Connect(function()
+                    translateGUI(descendant)
+                end)
             end
-
-            setreadonly(m, true)
-            return true
         end
-        return false
-    end)
+    end
+    
+    player.PlayerGui.DescendantAdded:Connect(onDescendantAdded)
     
     print("UI Translation system initialized")
     print("Supported UI types: " .. table.concat(getUItypeNames(), ", "))
     print("Translation entries: " .. getTableSize(TRANSLATIONS))
-    print("Metatable method: " .. (success and "Enabled" or "Disabled"))
 end
 
--- 获取UI类型名称列表
-local function getUItypeNames()
-    local names = {}
-    for name in pairs(UI_TYPES) do
-        table.insert(names, name)
+-- 更安全的替代方案：使用定时器持续检查
+local function safeTranslationMethod()
+    local player = Players.LocalPlayer
+    if not player then return end
+    
+    local translatedObjects = {} -- 记录已翻译的对象
+    
+    local function safeTranslate()
+        if player and player:FindFirstChild("PlayerGui") then
+            for _, gui in pairs(player.PlayerGui:GetDescendants()) do
+                if UI_TYPES[gui.ClassName] and gui:IsA("GuiObject") and not translatedObjects[gui] then
+                    if gui.Text then
+                        local translated = translateText(gui.Text)
+                        if translated ~= gui.Text then
+                            gui.Text = translated
+                            translatedObjects[gui] = true
+                        end
+                    end
+                end
+            end
+        end
     end
-    return names
+    
+    -- 每0.5秒检查一次新UI元素
+    while true do
+        safeTranslate()
+        task.wait(0.5)
+    end
 end
 
 -- 延迟初始化以确保游戏完全加载
-RunService.Heartbeat:Wait()
-
--- 安全初始化
-local success, err = pcall(initializeTranslations)
-if not success then
-    warn("Translation system initialization failed: " .. tostring(err))
-end
+task.spawn(function()
+    RunService.Heartbeat:Wait()
+    
+    -- 尝试标准方法
+    local success, err = pcall(initializeTranslations)
+    if not success then
+        warn("Standard translation failed: " .. tostring(err))
+        print("Using safe translation method...")
+        -- 使用安全方法作为备选
+        pcall(safeTranslationMethod)
+    end
+end)
 
 -- 导出翻译函数供其他脚本使用
 return {
