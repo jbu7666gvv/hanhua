@@ -1,7 +1,7 @@
 local m = getrawmetatable(game)
 local o = m.__newindex
 
--- 使用局部变量缓存常用函数和表，提高性能
+-- 使用局部变量缓存常用函数
 local IsA = game.IsA
 local typeof = typeof
 
@@ -9,13 +9,13 @@ local typeof = typeof
 local UI_TYPES = {
     TextLabel = true,
     TextButton = true, 
-    TextBox = true
+    TextBox = true,
+    ScrollingFrame = true
 }
 
 local TARGET_PROPERTY = "Text"
 
-local V = {
-    -- A
+local TRANSLATIONS = {
     ["3RD FLOOR"] = "三楼",
     ["A new patch note (99 NIGHTS IN THE FOREST UPDATE! ) is available! Open the changelog?"] = "有一个新的补丁说明《森林九十九夜》更新！🦌可供查看！是否打开更新日志？",
     ["About Developer & Support"] = "关于开发者和支持",
@@ -682,48 +682,40 @@ local V = {
     [" teleport to camp"] = "传送至营地",
 }
 
--- 预编译常用值
-local READONLY_TRUE = true
-local INSTANCE_TYPE = "Instance"
-
--- 创建快速查找函数
-local function shouldTranslate(object)
-    local className = object.ClassName
-    return UI_TYPES[className] == true
-end
-
-local function getTranslation(text)
-    return TRANSLATIONS[text]
+-- 计算翻译条目数量
+local function getTableSize(t)
+    local count = 0
+    for _ in pairs(t) do
+        count = count + 1
+    end
+    return count
 end
 
 setreadonly(m, false)
 
--- 优化hook函数，减少函数调用和条件判断
-m.__newindex = newcclosure(function(t, k, v)
-    -- 快速检查是否为Text属性
+m.__newindex = function(t, k, v)
+    -- 检查是否为Text属性
     if k == TARGET_PROPERTY then
-        -- 快速检查对象类型和类名
-        if typeof(t) == INSTANCE_TYPE and shouldTranslate(t) then
-            -- 直接表查找，如果找到翻译则使用，否则保持原值
-            local translated = getTranslation(v)
-            if translated then
-                v = translated
+        -- 检查对象类型
+        if typeof(t) == "Instance" then
+            local className = t.ClassName
+            -- 检查是否为需要翻译的UI类型
+            if UI_TYPES[className] then
+                -- 查找翻译
+                local translated = TRANSLATIONS[v]
+                if translated then
+                    v = translated
+                end
             end
         end
     end
     
-    -- 使用pcall增加错误处理
-    local success, result = pcall(o, t, k, v)
-    if not success then
-        warn("__newindex hook error:", result)
-        error(result, 2)
-    end
-    return result
-end)
+    return o(t, k, v)
+end
 
-setreadonly(m, READONLY_TRUE)
+setreadonly(m, true)
 
--- 可选：添加调试信息
+-- 调试信息
 print("UI Translation hook installed successfully")
-print("Supported UI types: " .. table.concat({"TextLabel", "TextButton", "TextBox"}, ", "))
-print("Translation entries: " .. #TRANSLATIONS)
+print("Supported UI types: TextLabel, TextButton, TextBox")
+print("Translation entries: " .. getTableSize(TRANSLATIONS))
