@@ -1,13 +1,19 @@
 local m = getrawmetatable(game)
 local o = m.__newindex
 
--- 使用局部变量缓存常用函数，提高性能
+-- 使用局部变量缓存常用函数和表，提高性能
 local IsA = game.IsA
-local TextLabel = "TextLabel"
-local TextButton = "TextButton" 
-local TextBox = "TextBox"
+local typeof = typeof
 
--- 优化翻译表，删除重复项，按字母顺序排列便于维护
+-- 预定义需要处理的UI类型和属性
+local UI_TYPES = {
+    TextLabel = true,
+    TextButton = true, 
+    TextBox = true
+}
+
+local TARGET_PROPERTY = "Text"
+
 local V = {
     -- A
     ["3RD FLOOR"] = "三楼",
@@ -676,17 +682,48 @@ local V = {
     [" teleport to camp"] = "传送至营地",
 }
 
+-- 预编译常用值
+local READONLY_TRUE = true
+local INSTANCE_TYPE = "Instance"
+
+-- 创建快速查找函数
+local function shouldTranslate(object)
+    local className = object.ClassName
+    return UI_TYPES[className] == true
+end
+
+local function getTranslation(text)
+    return TRANSLATIONS[text]
+end
+
 setreadonly(m, false)
 
--- 优化hook函数，使用缓存提高性能
+-- 优化hook函数，减少函数调用和条件判断
 m.__newindex = newcclosure(function(t, k, v)
-    if k == "Text" then
-        local objectType = typeof(t)
-        if objectType == "Instance" and (t:IsA(TextLabel) or t:IsA(TextButton) or t:IsA(TextBox)) then
-            v = V[v] or v
+    -- 快速检查是否为Text属性
+    if k == TARGET_PROPERTY then
+        -- 快速检查对象类型和类名
+        if typeof(t) == INSTANCE_TYPE and shouldTranslate(t) then
+            -- 直接表查找，如果找到翻译则使用，否则保持原值
+            local translated = getTranslation(v)
+            if translated then
+                v = translated
+            end
         end
     end
-    return o(t, k, v)
+    
+    -- 使用pcall增加错误处理
+    local success, result = pcall(o, t, k, v)
+    if not success then
+        warn("__newindex hook error:", result)
+        error(result, 2)
+    end
+    return result
 end)
 
-setreadonly(m, true)
+setreadonly(m, READONLY_TRUE)
+
+-- 可选：添加调试信息
+print("UI Translation hook installed successfully")
+print("Supported UI types: " .. table.concat({"TextLabel", "TextButton", "TextBox"}, ", "))
+print("Translation entries: " .. #TRANSLATIONS)
